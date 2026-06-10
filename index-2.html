@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Croissant Run — World's Largest Croissant Delivery</title>
+<style>
+  :root{
+    --crust:#D85A30; --crust-dark:#993C1D; --crust-deep:#712B13;
+    --road:#3C3489; --ink:#2C2C2A; --paper:#F7F1E8; --paper-dim:#efe6d6;
+    --blue:#185FA5; --blue-light:#378ADD; --amber:#EF9F27;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:16px;
+  }
+  #game-shell{ width:100%; max-width:480px; }
+
+  .hud{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:13px; }
+  .hud-left{ display:flex; gap:14px; flex-wrap:wrap; }
+  .hud .lbl{ color:#8a7f70; }
+  .hud .val{ font-weight:600; color:var(--ink); }
+  #timer{ color:var(--blue); }
+
+  .bar{ height:7px; background:var(--paper-dim); border-radius:99px; margin-bottom:12px; overflow:hidden; }
+  #progress{ height:100%; width:0%; background:var(--crust); border-radius:99px; transition:width .15s linear; }
+
+  #stage{
+    position:relative; width:100%; aspect-ratio:3/4;
+    background:#efe6d6; border:1px solid #e0d4c0; border-radius:14px;
+    overflow:hidden; touch-action:none; box-shadow:0 6px 20px rgba(120,80,40,0.12);
+  }
+  #cv{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  #overlay{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:24px;
+    background:rgba(45,30,20,0.55); backdrop-filter:blur(2px);
+  }
+  .ov-emoji{ font-size:46px; line-height:1; margin-bottom:8px; }
+  #ov-title{ font-size:21px; font-weight:700; color:#fff; margin-bottom:6px; }
+  #ov-text{ font-size:13px; color:#f0e9e4; max-width:310px; line-height:1.6; margin-bottom:16px; }
+  .btn{
+    background:var(--crust); color:#fff; border:none; padding:12px 28px;
+    border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit;
+  }
+  .btn:active{ transform:scale(0.98); }
+  .btn-ghost{ background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,0.6); margin-top:10px; }
+  .hint{ font-size:11px; color:#cdbfb6; margin-top:14px; }
+
+  .controls{ display:flex; gap:8px; margin-top:10px; }
+  .ctrl-btn{
+    flex:1; padding:16px; font-size:20px; background:#fff; border:1px solid #e0d4c0;
+    border-radius:8px; cursor:pointer; color:var(--crust-dark); font-weight:700;
+  }
+  .ctrl-btn:active{ background:var(--paper-dim); }
+
+  .footer{ font-size:11px; color:#b3a690; text-align:center; margin-top:10px; line-height:1.6; }
+  .best{ color:var(--crust-dark); font-weight:600; }
+</style>
+</head>
+<body>
+<div id="game-shell">
+
+  <div class="hud">
+    <div class="hud-left">
+      <div><span class="lbl">Miles to Times Sq</span> <span class="val" id="miles">90</span></div>
+      <div><span class="lbl">Score</span> <span class="val" id="score">0</span></div>
+      <div><span class="lbl">Best</span> <span class="val best" id="best">0</span></div>
+    </div>
+    <div><span class="lbl">Time</span> <span class="val" id="timer">90.0</span></div>
+  </div>
+
+  <div class="bar"><div id="progress"></div></div>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="overlay">
+      <div class="ov-emoji">🥐</div>
+      <div id="ov-title">Croissant Run</div>
+      <div id="ov-text">Steer the world's largest croissant from the Hudson Valley bakery to Serendipity3 in Times Square. Dodge potholes, taxis &amp; rival record spies. Grab coffee for a speed boost. Beat the clock for America's 250th.</div>
+      <button class="btn" id="startBtn">Start delivery</button>
+      <button class="btn btn-ghost" id="videoBtn" style="display:none;">Watch the video</button>
+      <div class="hint">← → arrows · tap left / right · or drag</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="ctrl-btn" id="leftBtn" aria-label="Move left">&#8592;</button>
+    <button class="ctrl-btn" id="rightBtn" aria-label="Move right">&#8594;</button>
+  </div>
+
+  <p class="footer">Honoring America's 250th &middot; Bakery &rarr; Serendipity3, Times Square</p>
+</div>
+
+<script>
+(function(){
+  // ====== EDIT ME: paste your YouTube/video link here ======
+  const VIDEO_URL = "https://www.youtube.com/";
+  // =========================================================
+
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ov-title');
+  const ovText = document.getElementById('ov-text');
+  const startBtn = document.getElementById('startBtn');
+  const videoBtn = document.getElementById('videoBtn');
+  const milesEl = document.getElementById('miles');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const timerEl = document.getElementById('timer');
+  const progressEl = document.getElementById('progress');
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('croissantBest')||'0',10)||0; } catch(e){}
+  bestEl.textContent = best;
+
+  let W=480, H=640, dpr=1;
+  function resize(){
+    const r = stage.getBoundingClientRect();
+    W=r.width; H=r.height; dpr=Math.min(window.devicePixelRatio||1,2);
+    cv.width=W*dpr; cv.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+
+  const LANES=3;
+  function laneX(i){ const m=W*0.14; const usable=W-m*2; return m + usable*(i+0.5)/LANES; }
+
+  let state='idle';
+  let player={lane:1, y:0, w:0, h:0, draw_x:0};
+  let obstacles=[], dist=0, speed=0, baseSpeed=0, score=0, timeLeft=90, boost=0;
+  let spawnTimer=0, lastTs=0, roadOffset=0;
+  const TOTAL_DIST=90;
+
+  const OB_TYPES=[
+    {t:'pothole'},{t:'taxi'},{t:'cone'},{t:'spy'}
+  ];
+
+  function reset(){
+    player.lane=1; obstacles=[]; dist=0; score=0; timeLeft=90; boost=0;
+    baseSpeed=130; speed=baseSpeed; spawnTimer=0; roadOffset=0;
+    sizePlayer(); player.draw_x=laneX(1);
+  }
+  function sizePlayer(){ player.w=W*0.16; player.h=player.w*1.15; player.y=H-player.h-24; }
+
+  function start(){
+    resize(); reset(); state='play'; overlay.style.display='none';
+    lastTs=performance.now(); requestAnimationFrame(loop);
+  }
+
+  function saveBest(){
+    if(score>best){ best=score; bestEl.textContent=best;
+      try{ localStorage.setItem('croissantBest', String(best)); }catch(e){} }
+  }
+
+  function gameOver(win){
+    state='over'; saveBest();
+    overlay.style.display='flex';
+    videoBtn.style.display = win ? 'inline-block' : 'none';
+    if(win){
+      ovTitle.textContent='Record stolen! 🇺🇸';
+      ovText.innerHTML='You delivered the world\'s largest croissant to Serendipity3 with '+timeLeft.toFixed(1)+'s to spare. Germany weeps. Score: '+score+'.';
+      startBtn.textContent='Play again';
+    } else {
+      ovTitle.textContent= timeLeft<=0 ? 'Out of time!' : 'Croissant crushed!';
+      ovText.innerHTML= (timeLeft<=0?'The clock beat you — the party starts without the croissant. ':'You wrecked the van '+ Math.max(1,Math.ceil(TOTAL_DIST-dist)) +' miles from Times Square. ')+'Score: '+score+'. Try again?';
+      startBtn.textContent='Retry';
+    }
+  }
+
+  function spawn(){
+    const lane=Math.floor(Math.random()*LANES);
+    if(Math.random()<0.16){ obstacles.push({lane, y:-40, type:'coffee', good:true}); }
+    else { const ob=OB_TYPES[Math.floor(Math.random()*OB_TYPES.length)];
+      obstacles.push({lane, y:-40, type:ob.t, good:false}); }
+  }
+
+  function loop(ts){
+    if(state!=='play') return;
+    let dt=(ts-lastTs)/1000; lastTs=ts; if(dt>0.05) dt=0.05;
+
+    timeLeft-=dt;
+    if(timeLeft<=0){ timeLeft=0; render(); gameOver(false); return; }
+
+    let curSpeed=speed + (boost>0?90:0);
+    if(boost>0) boost-=dt;
+
+    dist += (curSpeed/130*0.78)*dt;
+    if(dist>=TOTAL_DIST){ dist=TOTAL_DIST; render(); gameOver(true); return; }
+
+    speed=baseSpeed + dist*1.6;
+    roadOffset=(roadOffset+curSpeed*dt)%60;
+
+    spawnTimer-=dt;
+    const interval=Math.max(0.45, 1.0 - dist*0.005);
+    if(spawnTimer<=0){ spawn(); spawnTimer=interval; }
+
+    for(const o of obstacles){ o.y+=curSpeed*dt; }
+
+    const tx=laneX(player.lane);
+    player.draw_x+=(tx-player.draw_x)*Math.min(1,dt*14);
+
+    const py=player.y, ph=player.h;
+    for(const o of obstacles){
+      if(o.hit) continue;
+      if(o.lane===player.lane && o.y>py-30 && o.y<py+ph-20){
+        o.hit=true;
+        if(o.good){ boost=2.2; score+=50; }
+        else if(o.type==='pothole'){ timeLeft-=3; score=Math.max(0,score-10); }
+        else { render(); gameOver(false); return; }
+      }
+    }
+    obstacles=obstacles.filter(o=>{
+      if(o.y>H+40){ if(!o.good && !o.hit) score+=5; return false; }
+      return !(o.hit && !o.good);
+    });
+
+    render(); requestAnimationFrame(loop);
+  }
+
+  function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+  function drawCroissant(cx,cy,w,h){
+    ctx.save(); ctx.translate(cx,cy);
+    ctx.fillStyle='#185FA5'; roundRect(-w/2,-h*0.1,w,h*0.55,6); ctx.fill();
+    ctx.fillStyle='#378ADD'; roundRect(-w/2,-h*0.35,w,h*0.3,5); ctx.fill();
+    ctx.fillStyle='#2C2C2A';
+    roundRect(-w/2-3,h*0.05,6,h*0.18,3); ctx.fill();
+    roundRect(w/2-3,h*0.05,6,h*0.18,3); ctx.fill();
+    ctx.fillStyle='#D85A30';
+    const cw=w*0.92, chh=h*0.22, ty=-h*0.42;
+    ctx.beginPath(); ctx.moveTo(-cw/2,ty);
+    ctx.quadraticCurveTo(0,ty-chh*1.6,cw/2,ty);
+    ctx.quadraticCurveTo(cw*0.28,ty+chh,0,ty+chh*0.7);
+    ctx.quadraticCurveTo(-cw*0.28,ty+chh,-cw/2,ty); ctx.fill();
+    ctx.strokeStyle='#993C1D'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(-cw*0.22,ty-chh*0.3); ctx.lineTo(-cw*0.18,ty+chh*0.4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cw*0.04,ty-chh*0.5); ctx.lineTo(cw*0.02,ty+chh*0.4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cw*0.26,ty-chh*0.3); ctx.lineTo(cw*0.2,ty+chh*0.4); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawObstacle(o){
+    const x=laneX(o.lane), y=o.y, s=W*0.13;
+    ctx.save(); ctx.translate(x,y);
+    if(o.good){
+      ctx.fillStyle='#fff'; roundRect(-s*0.32,-s*0.4,s*0.64,s*0.7,4); ctx.fill();
+      ctx.fillStyle='#5F5E5A'; roundRect(-s*0.36,-s*0.4,s*0.72,s*0.16,3); ctx.fill();
+      ctx.fillStyle='#712B13'; roundRect(-s*0.26,-s*0.36,s*0.52,s*0.1,2); ctx.fill();
+    } else if(o.type==='pothole'){
+      ctx.fillStyle='#2C2C2A'; ctx.beginPath(); ctx.ellipse(0,0,s*0.5,s*0.34,0,0,7); ctx.fill();
+      ctx.fillStyle='#5F5E5A'; ctx.beginPath(); ctx.ellipse(0,0,s*0.34,s*0.2,0,0,7); ctx.fill();
+    } else if(o.type==='taxi'){
+      ctx.fillStyle='#EF9F27'; roundRect(-s*0.42,-s*0.55,s*0.84,s*1.1,5); ctx.fill();
+      ctx.fillStyle='#412402'; roundRect(-s*0.34,-s*0.4,s*0.68,s*0.3,3); ctx.fill();
+      ctx.fillStyle='#412402'; roundRect(-s*0.34,s*0.12,s*0.68,s*0.3,3); ctx.fill();
+    } else if(o.type==='cone'){
+      ctx.fillStyle='#D85A30'; ctx.beginPath(); ctx.moveTo(0,-s*0.5); ctx.lineTo(s*0.34,s*0.4); ctx.lineTo(-s*0.34,s*0.4); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#fff'; roundRect(-s*0.22,-s*0.08,s*0.44,s*0.12,2); ctx.fill();
+    } else {
+      ctx.fillStyle='#2C2C2A'; ctx.beginPath(); ctx.arc(0,0,s*0.42,0,7); ctx.fill();
+      ctx.fillStyle='#A32D2D'; roundRect(-s*0.34,-s*0.1,s*0.68,s*0.16,3); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.font='bold '+Math.round(s*0.4)+'px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('!',0,-s*0.02);
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#3C3489'; ctx.fillRect(0,0,W,H);
+    const m=W*0.10;
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=2; ctx.setLineDash([22,28]);
+    for(let i=1;i<LANES;i++){
+      const x=m+(W-m*2)*i/LANES;
+      ctx.beginPath(); ctx.lineDashOffset=-roadOffset; ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.strokeStyle='rgba(216,90,48,0.6)'; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(m,0); ctx.lineTo(m,H); ctx.moveTo(W-m,0); ctx.lineTo(W-m,H); ctx.stroke();
+
+    for(const o of obstacles) drawObstacle(o);
+    drawCroissant(player.draw_x, player.y+player.h/2, player.w, player.h);
+
+    milesEl.textContent=Math.max(0,Math.ceil(TOTAL_DIST-dist));
+    scoreEl.textContent=score;
+    timerEl.textContent=timeLeft.toFixed(1);
+    progressEl.style.width=(dist/TOTAL_DIST*100)+'%';
+  }
+
+  function move(d){ if(state!=='play')return; player.lane=Math.max(0,Math.min(LANES-1,player.lane+d)); }
+
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'){move(-1);e.preventDefault();}
+    if(e.key==='ArrowRight'){move(1);e.preventDefault();}
+  });
+  document.getElementById('leftBtn').addEventListener('click',()=>move(-1));
+  document.getElementById('rightBtn').addEventListener('click',()=>move(1));
+  startBtn.addEventListener('click',start);
+  videoBtn.addEventListener('click',()=>{ window.open(VIDEO_URL,'_blank'); });
+
+  stage.addEventListener('pointerdown',e=>{
+    if(state!=='play')return;
+    const r=stage.getBoundingClientRect();
+    if(e.clientX-r.left < r.width/2) move(-1); else move(1);
+  });
+
+  resize(); render();
+})();
+</script>
+</body>
+</html>
